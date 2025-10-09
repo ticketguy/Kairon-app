@@ -2,7 +2,7 @@ import PortID from "@harboria-labs/portid-js-sdk";
 
 document.addEventListener("DOMContentLoaded", () => {
   // --- SDK SETUP ---
-  const sdk = new PortID("kairon-v1", "https://kairon-eta.vercel.app");
+  const sdk = new PortID("kairon-v1", "https://kaironapp.vercel.app/");
 
   // --- KAIRON'S OWN DATABASE FOR APP DATA ---
   const db = new Dexie("KaironAppCache");
