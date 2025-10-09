@@ -1611,12 +1611,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   window.handleLogin = async function (event) {
     event.preventDefault();
-    const form = event.target;
-    const formData = new FormData(form);
+    const formData = new FormData(event.target);
     const username = formData.get("username");
     const password = formData.get("password");
     const loginError = document.getElementById("loginError");
-
     try {
       const isLoggedIn = await sdk.login(username, password);
       if (isLoggedIn) {
