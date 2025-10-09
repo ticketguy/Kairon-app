@@ -1574,40 +1574,42 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("signUpForm")?.classList.toggle("hidden");
   };
 
-  window.handleSignUp = async function (event) {
-    event.preventDefault();
-    const form = event.target;
-    const formData = new FormData(form);
-    const username = formData.get("username");
-    const password = formData.get("password");
-    const signUpError = document.getElementById("signUpError");
+window.handleSignUp = async function (event) {
+  event.preventDefault();
+  const form = event.target;
+  const formData = new FormData(form);
+  const username = formData.get("username");
+  const password = formData.get("password");
+  const signUpError = document.getElementById("signUpError");
 
-    try {
-      const { recoveryKey } = await sdk.signUp(username, password);
+  try {
+    // The SDK does all the work and saves credentials to its own DB.
+    const { recoveryKey } = await sdk.signUp(username, password);
 
-      document.getElementById("signUpForm").classList.add("hidden");
-      document.getElementById("recoveryContainer").classList.remove("hidden");
-      document.getElementById("recoveryKeyDisplay").textContent = recoveryKey;
+    // We just show the key and set temporary session info.
+    document.getElementById("signUpForm").classList.add("hidden");
+    document.getElementById("recoveryContainer").classList.remove("hidden");
+    document.getElementById("recoveryKeyDisplay").textContent = recoveryKey;
 
-      sessionStorage.setItem("signupUsername", username);
-      sessionStorage.setItem("signupPassword", password);
+    sessionStorage.setItem("signupUsername", username);
+    sessionStorage.setItem("signupPassword", password); // Temp store for auto-login
 
-      const confirmCheckbox = document.getElementById("confirmRecovery");
-      const finishBtn = document.getElementById("finishSetupBtn");
-      confirmCheckbox.onchange = () => {
-        finishBtn.disabled = !confirmCheckbox.checked;
-        finishBtn.classList.toggle("opacity-50", !confirmCheckbox.checked);
-        finishBtn.classList.toggle(
-          "cursor-not-allowed",
-          !confirmCheckbox.checked
-        );
-      };
-    } catch (error) {
-      console.error("Sign up failed:", error);
-      signUpError.textContent = error.message;
-      signUpError.classList.remove("hidden");
-    }
-  };
+    const confirmCheckbox = document.getElementById("confirmRecovery");
+    const finishBtn = document.getElementById("finishSetupBtn");
+    confirmCheckbox.onchange = () => {
+      finishBtn.disabled = !confirmCheckbox.checked;
+      finishBtn.classList.toggle("opacity-50", !confirmCheckbox.checked);
+      finishBtn.classList.toggle(
+        "cursor-not-allowed",
+        !confirmCheckbox.checked
+      );
+    };
+  } catch (error) {
+    console.error("Sign up failed:", error);
+    signUpError.textContent = error.message;
+    signUpError.classList.remove("hidden");
+  }
+};
 
   window.handleLogin = async function (event) {
     event.preventDefault();
@@ -1639,43 +1641,40 @@ document.addEventListener("DOMContentLoaded", () => {
     location.reload();
   };
 
-  window.finishSetup = function () {
-    const username = sessionStorage.getItem("signupUsername");
-    const password = sessionStorage.getItem("signupPassword");
-    if (username && password) {
-      sessionStorage.setItem("isLoggedIn", "true");
-      sessionStorage.setItem("currentUser", username);
-      sessionStorage.setItem("sessionKey", btoa(password)); // Encode password for session re-login
-      sessionStorage.removeItem("signupUsername");
-      sessionStorage.removeItem("signupPassword");
-      location.reload();
-    }
-  };
-  async function loginAndInitialize() {
-    const currentUser = sessionStorage.getItem("currentUser");
-    if (!currentUser) {
-      handleLogout();
-      return;
-    }
+window.finishSetup = function () {
+  const username = sessionStorage.getItem("signupUsername");
+  const password = sessionStorage.getItem("signupPassword");
+  if (username && password) {
+    // Set the final session keys for the gatekeeper
+    sessionStorage.setItem("isLoggedIn", "true");
+    sessionStorage.setItem("currentUser", username);
+    sessionStorage.setItem("sessionKey", btoa(password));
+
+    sessionStorage.removeItem("signupUsername");
+    sessionStorage.removeItem("signupPassword");
+    location.reload();
+  }
+};
+
+async function loginAndInitialize() {
+    const currentUser = sessionStorage.getItem('currentUser');
+    if(!currentUser) { handleLogout(); return; }
 
     try {
-      // Use the saved password to re-login to the SDK
-      const password = atob(sessionStorage.getItem("sessionKey"));
-      const isLoggedIn = await sdk.login(currentUser, password);
-      if (!isLoggedIn) throw new Error("Local session is invalid.");
+        const password = atob(sessionStorage.getItem('sessionKey'));
+        const isLoggedIn = await sdk.login(currentUser, password);
+        if (!isLoggedIn) throw new Error("Local session is invalid.");
 
-      // Load the latest data from the backup via the SDK
-      const initialData = await sdk.loadData();
-
-      // Show the main app and initialize it with the data
-      document.getElementById("mainAppContainer")?.classList.remove("hidden");
-      document.getElementById("authContainer")?.classList.add("hidden");
-      init(initialData);
+        const initialData = await sdk.loadData();
+        
+        document.getElementById('mainAppContainer')?.classList.remove('hidden');
+        document.getElementById('authContainer')?.classList.add('hidden');
+        init(initialData);
     } catch (error) {
-      console.error("Failed to initialize session:", error);
-      handleLogout();
+        console.error("Failed to initialize session:", error);
+        handleLogout();
     }
-  }
+}
 
   window.showRecoveryForm = function () {
     document.getElementById("loginForm").classList.add("hidden");
