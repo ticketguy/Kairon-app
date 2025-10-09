@@ -2,7 +2,7 @@ export default async function handler(request, response) {
 
    const allowedOrigin =
      process.env.NODE_ENV === "production"
-       ? "https://kairon-eta.vercel.app" // Your live app's URL
+       ? "kaironapp.vercel.app" // Your live app's URL
        : "http://localhost:5173"; // Your local dev server's URL
 
    // Set the secure CORS headers
