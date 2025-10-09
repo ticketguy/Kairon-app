@@ -1,0 +1,16 @@
+{
+  "name": "Kairon",
+  "short_name": "Kairon",
+  "description": "An intelligent task manager designed to help you seize the right moment.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#667eea",
+"icons": [
+  {
+    "src": "/favicon_io/favicon-32x32.png",
+    "sizes": "512x512",
+    "type": "image/png"
+  }
+  ]
+}

@@ -1,0 +1,134 @@
+.side-menu {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease-in-out;
+}
+
+.side-menu.open {
+    transform: translateX(0);
+}
+
+.filter-panel {
+    transform: translateX(100%);
+    transition: transform 0.3s ease-in-out;
+}
+
+.filter-panel.open {
+    transform: translateX(0);
+}
+
+.tooltip-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.tooltip-content {
+    visibility: hidden;
+    position: absolute;
+    z-index: 1000;
+    background: #1f2937;
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.tooltip-content::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: #1f2937;
+}
+
+.tooltip-wrapper:hover .tooltip-content {
+    visibility: visible;
+    opacity: 1;
+}
+
+.notification {
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    transition: box-shadow 0.2s, background-color 0.3s;
+}
+
+.card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+body.dark {
+    color: #e2e8f0;
+}
+
+body.dark .tooltip-content {
+    background: #334155;
+}
+
+body.dark .tooltip-content::after {
+    border-top-color: #334155;
+}
+
+body.dark button:not(.bg-gradient-to-r):hover {
+    background-color: #334155 !important;
+}
+
+.interest-item {
+    background: white;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    transition: background-color 0.3s;
+}
+
+body.dark .interest-item {
+    background: #334155;
+}
+
+/* --- NEW STYLES --- */
+.subtask-completed span {
+    text-decoration: line-through;
+    color: #6b7280;
+    /* text-gray-500 */
+}
+
+.sortable-ghost {
+    background: #eef2ff;
+    /* indigo-100 */
+    opacity: 0.6;
+    border: 1px dashed #4f46e5;
+}
+
+.sortable-drag {
+    cursor: grabbing;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+    transform: scale(1.02);
+}
+
+.task-draggable {
+    cursor: grab;
+}
