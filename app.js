@@ -1,4 +1,5 @@
 import PortID from "@harboria-labs/portid-js-sdk";
+import Dexie from "dexie";
 
 document.addEventListener("DOMContentLoaded", () => {
   // --- SDK SETUP ---
@@ -6,11 +7,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- KAIRON'S OWN DATABASE FOR APP DATA ---
   const db = new Dexie("KaironAppCache");
-  db.version(1).stores({
-    tasks: "++id, status, category, priority, dueDateTime",
-    interests: "++id",
+  db.version(2).stores({
+    tasks: "++id, userId, status, category, priority, dueDateTime",
+    interests: "++id, userId",
     settings: "key",
-    inspirations: "++id",
+    inspirations: "++id, userId",
   });
 
   // ---- STATE MANAGEMENT ---- //
@@ -287,16 +288,8 @@ document.addEventListener("DOMContentLoaded", () => {
     else if (pageId === "today") interestFab.classList.remove("hidden");
   }
 
-  function encryptData(data, secretKey) {
-    const dataString = JSON.stringify(data);
-    return CryptoJS.AES.encrypt(dataString, secretKey).toString();
-  }
-
-  function decryptData(encryptedData, secretKey) {
-    const bytes = CryptoJS.AES.decrypt(encryptedData, secretKey);
-    const decryptedString = bytes.toString(CryptoJS.enc.Utf8);
-    return JSON.parse(decryptedString);
-  }
+  // Encryption is handled internally by the PortID SDK.
+  // No need for manual encrypt/decrypt here.
 
   function showNotification(title, message) {
     const container = document.getElementById("notificationContainer");
@@ -1743,8 +1736,14 @@ async function loginAndInitialize() {
       return;
     }
 
-    const hashedPassword = CryptoJS.SHA256(newPassword).toString();
-    await db.users.update(username, { hashedPassword });
+    // Re-login with the new password by using the SDK's internal hash
+    const { hashPassword } = await import("@harboria-labs/portid-js-sdk/src/encryption.js");
+    const hashedPassword = await hashPassword(newPassword, `kairon-v1:${username}`);
+    
+    // Update in the SDK's internal Dexie DB
+    const sdkDb = new Dexie(`PortID_DB_kairon-v1`);
+    sdkDb.version(1).stores({ users: "&username, hashedPassword, recoveryKey, backupHash" });
+    await sdkDb.users.update(username, { hashedPassword });
 
     alert("Password successfully reset! Please log in with your new password.");
 
