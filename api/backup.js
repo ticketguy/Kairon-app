@@ -1,12 +1,12 @@
 export default async function handler(request, response) {
 
     // --- CORS BLOCK ---
-    const allowedOrigin =
-      process.env.NODE_ENV === "production"
-        ? "kaironapp.vercel.app"
-        : "http://localhost:5173";
-    response.setHeader('Access-Control-Allow-Origin', allowedOrigin);
-    response.setHeader('Access-Control-Allow-Credentials', true);
+    const allowedOrigins = ["https://kaironapp.vercel.app", "http://localhost:5173", "http://localhost:3000"];
+    const origin = request.headers.origin;
+    if (allowedOrigins.includes(origin) || !origin) {
+      response.setHeader("Access-Control-Allow-Origin", origin || "*");
+    }
+    response.setHeader('Access-Control-Allow-Credentials', 'true');
     response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (request.method === 'OPTIONS') {
