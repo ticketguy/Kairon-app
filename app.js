@@ -1894,6 +1894,226 @@ async function loginAndInitialize() {
     };
   };
 
+
+  // ---- AI PANEL & ASSISTANT ---- //
+  let aiReady = false;
+  let aiMessageId = 0;
+
+  window.toggleAI = function() {
+    const panel = document.getElementById("aiPanel");
+    const overlay = document.getElementById("aiOverlay");
+    const isOpen = !panel.classList.contains("translate-x-full");
+    if (isOpen) {
+      panel.classList.add("translate-x-full");
+      overlay.classList.add("hidden");
+    } else {
+      panel.classList.remove("translate-x-full");
+      overlay.classList.remove("hidden");
+    }
+  };
+
+  window.activateAI = function() {
+    document.getElementById("aiNotLoaded").classList.add("hidden");
+    document.getElementById("aiLoading").classList.remove("hidden");
+    
+    const worker = getAIWorker();
+    worker.onmessage = ({ data }) => {
+      if (data.type === "progress") {
+        const pct = data.data.pct || 0;
+        document.getElementById("aiProgressBar").style.width = pct + "%";
+        document.getElementById("aiLoadText").textContent = data.data.status;
+      } else if (data.type === "ready") {
+        aiReady = true;
+        document.getElementById("aiLoading").classList.add("hidden");
+        document.getElementById("aiActive").classList.remove("hidden");
+        document.getElementById("aiStatus").textContent = "active";
+        document.getElementById("aiStatus").className = "text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700";
+        document.getElementById("aiDot").classList.remove("hidden");
+        showNotification("🧠 AI Ready", "Your private AI assistant is active");
+        // Run initial analysis
+        runAIAnalysis();
+      } else if (data.type === "result") {
+        handleAIResult(data);
+      } else if (data.type === "error") {
+        addAIMessage("error", "⚠️ " + data.error);
+      }
+    };
+    worker.postMessage({ type: "load", id: "init" });
+  };
+
+  function addAIMessage(type, content) {
+    const container = document.getElementById("aiInsights");
+    const colors = { insight: "border-purple-200 bg-purple-50", warning: "border-yellow-200 bg-yellow-50", success: "border-green-200 bg-green-50", error: "border-red-200 bg-red-50" };
+    const html = `<div class="p-3 rounded-lg border text-xs ${colors[type] || colors.insight} transition-all animate-pulse-once">
+      <p class="text-gray-700">${content}</p>
+      <p class="text-gray-400 mt-1 text-[10px]">${new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})}</p>
+    </div>`;
+    container.insertAdjacentHTML("afterbegin", html);
+    // Keep max 20 messages
+    while (container.children.length > 20) container.lastChild.remove();
+  }
+
+  function runAIAnalysis() {
+    if (!aiReady) return;
+    const worker = getAIWorker();
+    const userId = sessionStorage.getItem("currentUser");
+    const today = new Date().toISOString().split("T")[0];
+    const todayTasks = tasks.filter(t => t.status !== "completed" && t.dueDateTime?.startsWith(today));
+    const overdue = tasks.filter(t => t.status !== "completed" && t.dueDateTime && t.dueDateTime < new Date().toISOString());
+    const completedThisWeek = tasks.filter(t => {
+      if (t.status !== "completed" || !t.completedAt) return false;
+      const d = new Date(t.completedAt);
+      const weekAgo = new Date(Date.now() - 7 * 86400000);
+      return d > weekAgo;
+    });
+
+    // Daily brief
+    worker.postMessage({
+      type: "dailyBrief",
+      id: "brief_" + Date.now(),
+      payload: {
+        tasks: todayTasks,
+        completedYesterday: tasks.filter(t => t.completedAt?.startsWith(new Date(Date.now() - 86400000).toISOString().split("T")[0])).length,
+        streak: 0,
+      }
+    });
+
+    // Immediate non-AI insights
+    if (overdue.length > 0) {
+      addAIMessage("warning", `⏰ You have ${overdue.length} overdue task${overdue.length > 1 ? "s" : ""}. Consider rescheduling or completing them today.`);
+    }
+    if (todayTasks.length === 0) {
+      addAIMessage("success", "🎉 No tasks due today! Great time to work on inbox items or plan ahead.");
+    } else if (todayTasks.length > 5) {
+      addAIMessage("warning", `📋 ${todayTasks.length} tasks today is a lot. Focus on your top 3 and defer the rest.`);
+    }
+    if (completedThisWeek.length > 0) {
+      const avgPerDay = (completedThisWeek.length / 7).toFixed(1);
+      addAIMessage("insight", `📊 This week: ${completedThisWeek.length} tasks done (${avgPerDay}/day avg). ${completedThisWeek.length >= 10 ? "Strong pace!" : "Room to grow!"}`);
+    }
+
+    // Habit patterns
+    const categories = {};
+    completedThisWeek.forEach(t => { categories[t.category] = (categories[t.category] || 0) + 1; });
+    const topCat = Object.entries(categories).sort((a, b) => b[1] - a[1])[0];
+    if (topCat) {
+      addAIMessage("insight", `🎯 Your top focus this week: ${topCat[0]} (${topCat[1]} tasks). ${topCat[0] === "Work" ? "Don't forget personal time!" : "Nice balance!"}`);
+    }
+  }
+
+  window.askAI = function() {
+    if (!aiReady) { showNotification("AI", "Activate AI first"); return; }
+    const input = document.getElementById("aiInput");
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+
+    addAIMessage("insight", "🤔 Thinking...");
+    const worker = getAIWorker();
+    worker.postMessage({
+      type: "parseTask",
+      id: "ask_" + Date.now(),
+      payload: { text: `User asks about their tasks: "${text}"\n\nTheir current tasks: ${tasks.filter(t=>t.status!=="completed").slice(0,10).map(t=>t.title).join(", ")}` }
+    });
+  };
+
+  window.aiAction = function(action) {
+    if (!aiReady) { showNotification("AI", "Activate AI first"); return; }
+    const worker = getAIWorker();
+    const today = new Date().toISOString().split("T")[0];
+    const hour = new Date().getHours();
+
+    if (action === "prioritize") {
+      const pending = tasks.filter(t => t.status !== "completed").slice(0, 8);
+      if (pending.length === 0) { addAIMessage("success", "No pending tasks to prioritize!"); return; }
+      worker.postMessage({ type: "prioritize", id: "pri_" + Date.now(), payload: { tasks: pending } });
+      addAIMessage("insight", "🔄 Analyzing task priorities...");
+    }
+    else if (action === "habits") {
+      // Analyze completion patterns
+      const byHour = {};
+      const byDay = {};
+      tasks.filter(t => t.completedAt).forEach(t => {
+        const d = new Date(t.completedAt);
+        const h = d.getHours();
+        const day = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()];
+        byHour[h] = (byHour[h] || 0) + 1;
+        byDay[day] = (byDay[day] || 0) + 1;
+      });
+      const peakHour = Object.entries(byHour).sort((a,b) => b[1]-a[1])[0];
+      const peakDay = Object.entries(byDay).sort((a,b) => b[1]-a[1])[0];
+      let msg = "📈 Your productivity patterns:\n";
+      if (peakHour) msg += `• Peak hour: ${peakHour[0]}:00 (${peakHour[1]} tasks completed)\n`;
+      if (peakDay) msg += `• Most productive day: ${peakDay[0]}\n`;
+      msg += `• Total completed: ${tasks.filter(t=>t.status==="completed").length}`;
+      addAIMessage("insight", msg.replace(/\n/g, "<br>"));
+    }
+    else if (action === "suggest") {
+      const pending = tasks.filter(t => t.status !== "completed");
+      const energyMap = { "Health": hour < 12 ? "high" : "medium", "Work": hour >= 9 && hour <= 17 ? "high" : "low", "Personal": hour >= 17 ? "high" : "medium" };
+      const suggested = pending.filter(t => energyMap[t.category] === "high").slice(0, 3);
+      if (suggested.length > 0) {
+        addAIMessage("insight", `⚡ Based on the time (${hour}:00), try these now:<br>` + suggested.map(t => `• ${t.title}`).join("<br>"));
+      } else {
+        const any = pending.slice(0, 3);
+        addAIMessage("insight", any.length > 0 ? "Try these next:<br>" + any.map(t => `• ${t.title}`).join("<br>") : "All clear! Great job.");
+      }
+    }
+    else if (action === "review") {
+      const weekAgo = new Date(Date.now() - 7*86400000);
+      const completed = tasks.filter(t => t.status === "completed" && new Date(t.completedAt) > weekAgo);
+      const added = tasks.filter(t => new Date(t.createdAt) > weekAgo);
+      const overdue = tasks.filter(t => t.status !== "completed" && t.dueDateTime && t.dueDateTime < new Date().toISOString());
+      addAIMessage("insight", `📋 Weekly Review:<br>• Tasks completed: ${completed.length}<br>• Tasks added: ${added.length}<br>• Currently overdue: ${overdue.length}<br>• Completion rate: ${added.length > 0 ? Math.round(completed.length/added.length*100) : 0}%`);
+    }
+  };
+
+  function handleAIResult(data) {
+    if (data.id?.startsWith("brief_")) {
+      addAIMessage("insight", "☀️ " + (typeof data.data === "string" ? data.data : JSON.stringify(data.data)));
+    } else if (data.id?.startsWith("pri_")) {
+      const result = data.data;
+      if (result?.reasoning) {
+        addAIMessage("insight", "📊 Priority suggestion: " + result.reasoning);
+      } else {
+        addAIMessage("insight", "📊 " + (typeof result === "string" ? result : JSON.stringify(result)));
+      }
+    } else if (data.id?.startsWith("ask_")) {
+      // Remove "thinking" message
+      const container = document.getElementById("aiInsights");
+      const thinking = container.querySelector(":first-child");
+      if (thinking?.textContent?.includes("Thinking")) thinking.remove();
+      addAIMessage("insight", typeof data.data === "string" ? data.data : JSON.stringify(data.data));
+    } else if (data.id?.startsWith("parse_")) {
+      // Quick capture AI parsing - update the task silently
+      const taskId = parseInt(data.id.split("_")[1]);
+      if (data.data && typeof data.data === "object" && data.data.title) {
+        db.tasks.update(taskId, {
+          title: data.data.title,
+          priority: data.data.priority || "medium",
+          category: data.data.category || "Other",
+          dueDateTime: data.data.dueDate || undefined,
+        });
+        addAIMessage("success", `✨ Auto-organized: "${data.data.title}" → ${data.data.category}, ${data.data.priority} priority`);
+      }
+    }
+  }
+
+  // Auto-remind: check every 5 minutes for upcoming tasks
+  setInterval(() => {
+    if (!aiReady) return;
+    const now = new Date();
+    const in15min = new Date(now.getTime() + 15 * 60000).toISOString();
+    const upcoming = tasks.filter(t => 
+      t.status !== "completed" && t.dueDateTime && 
+      t.dueDateTime > now.toISOString() && t.dueDateTime <= in15min
+    );
+    upcoming.forEach(t => {
+      showNotification("⏰ Coming up", `"${t.title}" is due in 15 minutes`);
+    });
+  }, 5 * 60000);
+
+
   // ---- GATEKEEPER: This runs on every page load ---- //
   if (sessionStorage.getItem("isLoggedIn") === "true") {
     loginAndInitialize();
