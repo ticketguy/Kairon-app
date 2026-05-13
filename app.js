@@ -1,5 +1,9 @@
 import PortID from "@harboria-labs/portid-js-sdk";
 import Dexie from "dexie";
+import { StreakManager } from "./src/streaks.js";
+import { Celebrations } from "./src/celebrations.js";
+import { DailyPlanner } from "./src/planner.js";
+import { QuickCapture } from "./src/inbox.js";
 
 document.addEventListener("DOMContentLoaded", () => {
   // --- SDK SETUP ---
@@ -13,6 +17,21 @@ document.addEventListener("DOMContentLoaded", () => {
     settings: "key",
     inspirations: "++id, userId",
   });
+
+  // ---- FEATURE MODULES ---- //
+  const streakMgr = new StreakManager(db);
+  const celebrations = new Celebrations();
+  const planner = new DailyPlanner();
+  const quickCapture = new QuickCapture();
+  
+  // AI Worker (lazy-loaded on first use)
+  let aiWorker = null;
+  function getAIWorker() {
+    if (!aiWorker) {
+      aiWorker = new Worker(new URL("./src/ai-worker.js", import.meta.url), { type: "module" });
+    }
+    return aiWorker;
+  }
 
   // ---- STATE MANAGEMENT ---- //
   let tasks = [];
@@ -1663,6 +1682,14 @@ async function loginAndInitialize() {
         document.getElementById('mainAppContainer')?.classList.remove('hidden');
         document.getElementById('authContainer')?.classList.add('hidden');
         init(initialData);
+        // Show daily planner on first load of today
+        const lastPlannerDate = sessionStorage.getItem("lastPlannerDate");
+        const today = new Date().toISOString().split("T")[0];
+        if (lastPlannerDate !== today) {
+          setTimeout(() => { showDailyPlanner(); sessionStorage.setItem("lastPlannerDate", today); }, 500);
+        }
+        // Update streak
+        updateStreakDisplay();
     } catch (error) {
         console.error("Failed to initialize session:", error);
         handleLogout();
@@ -1762,6 +1789,111 @@ async function loginAndInitialize() {
       showNotification("Error", `Sync failed: ${error.message}`);
     }
   };
+
+  // ---- QUICK CAPTURE ---- //
+  window.showQuickCapture = function() {
+    quickCapture.show();
+  };
+  window.hideQuickCapture = function() {
+    quickCapture.hide();
+  };
+  window.quickAdd = async function() {
+    const text = quickCapture.getInput();
+    if (!text) return;
+    
+    // Create task with minimal info (goes to inbox)
+    const task = {
+      title: text,
+      status: "pending",
+      category: "Other",
+      priority: "medium",
+      dueDateTime: null,
+      notes: "",
+      tags: ["inbox"],
+      subtasks: [],
+      userId: sessionStorage.getItem("currentUser"),
+      createdAt: new Date().toISOString(),
+    };
+    
+    const id = await db.tasks.add(task);
+    task.id = id;
+    tasks.push(task);
+    quickCapture.clear();
+    quickCapture.hide();
+    showNotification("Added", `"${text}" added to inbox`);
+    
+    // Try AI parsing in background (if loaded)
+    if (aiWorker) {
+      aiWorker.postMessage({ type: "parseTask", payload: { text }, id: `parse_${id}` });
+    }
+  };
+
+  // ---- CELEBRATIONS ---- //
+  window.celebrateTaskComplete = function() {
+    const today = new Date().toISOString().split("T")[0];
+    const remainingToday = tasks.filter(t => 
+      t.status !== "completed" && t.dueDateTime?.startsWith(today)
+    ).length;
+    celebrations.onTaskComplete(remainingToday);
+  };
+
+  // ---- STREAKS ---- //
+  window.updateStreakDisplay = async function() {
+    const userId = sessionStorage.getItem("currentUser");
+    if (!userId) return;
+    const streak = await streakMgr.updateStreak(userId, tasks);
+    const streakEl = document.getElementById("streakDisplay");
+    if (streakEl) {
+      streakEl.innerHTML = `${streakMgr.getStreakEmoji(streak.current)} ${streak.current}`;
+      streakEl.title = streakMgr.getMotivation(streak.current);
+    }
+    // Check for milestone
+    if (streak.current > 0 && streak.current % 7 === 0 && streak.lastCompletedDate === new Date().toISOString().split("T")[0]) {
+      celebrations.onStreakMilestone(streak.current);
+      showNotification("🔥 Streak Milestone!", streakMgr.getMotivation(streak.current));
+    }
+    return streak;
+  };
+
+  // ---- DAILY PLANNER ---- //
+  window.showDailyPlanner = async function() {
+    const userId = sessionStorage.getItem("currentUser");
+    const streak = await streakMgr.getStreak(userId);
+    const plannerHTML = planner.renderPlannerHTML(tasks, streak);
+    const container = document.getElementById("todayPage");
+    if (container) {
+      container.insertAdjacentHTML("afterbegin", plannerHTML);
+    }
+  };
+  window.closePlanner = function() {
+    const el = document.querySelector(".planner-ritual");
+    if (el) el.remove();
+  };
+
+  // ---- AI FEATURES ---- //
+  window.loadAI = function() {
+    const worker = getAIWorker();
+    worker.postMessage({ type: "load", id: "init" });
+    worker.onmessage = ({ data }) => {
+      if (data.type === "ready") {
+        showNotification("🧠 AI Ready", "On-device AI loaded (your data stays private)");
+      } else if (data.type === "progress") {
+        console.log("AI:", data.data.status);
+      } else if (data.type === "result" && data.id?.startsWith("parse_")) {
+        // AI parsed a quick-capture task — update it
+        const taskId = parseInt(data.id.split("_")[1]);
+        if (data.data && typeof data.data === "object") {
+          db.tasks.update(taskId, {
+            title: data.data.title || undefined,
+            priority: data.data.priority || undefined,
+            category: data.data.category || undefined,
+            dueDateTime: data.data.dueDate || undefined,
+          });
+        }
+      }
+    };
+  };
+
   // ---- GATEKEEPER: This runs on every page load ---- //
   if (sessionStorage.getItem("isLoggedIn") === "true") {
     loginAndInitialize();
